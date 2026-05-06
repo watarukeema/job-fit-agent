@@ -34,14 +34,130 @@ Overall, the goal was to build something I would genuinely use during my job sea
 - Express
 - OpenAI API
 - dotenv
+- Zod
+
+## Setup
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create a local environment file:
+
+```bash
+cp .env.example .env
+```
+
+Then set `OPENAI_API_KEY` in `.env`.
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+The API runs on `http://localhost:5000` by default.
+
+## Scripts
+
+- `npm run dev` starts the TypeScript server with `tsx`.
+- `npm run typecheck` checks TypeScript without emitting files.
+- `npm run build` compiles the app to `dist`.
+- `npm start` runs the compiled server from `dist/server.js`.
+- `npm test` compiles and runs the API test suite with mocked OpenAI responses.
 
 ## API Endpoints
 
 ### GET /health
 Returns API health status.
 
+```bash
+curl http://localhost:5000/health
+```
+
 ### POST /analyze-job
 Analyzes job fit.
 
+Required JSON body:
+
+```json
+{
+  "title": "Junior Software Engineer",
+  "company": "Example Co",
+  "description": "We are looking for a junior developer with TypeScript, Node.js, and SQL experience.",
+  "platform": "LinkedIn"
+}
+```
+
+Optional candidate profile:
+
+```json
+{
+  "candidate": {
+    "background": "Recent computer science graduate",
+    "skills": ["TypeScript", "Express", "PostgreSQL", "React"],
+    "targetRoles": ["junior software engineer", "backend developer"],
+    "workRights": "Has Australian working rights",
+    "projects": ["parking app", "HTTP proxy", "music genre classifier"]
+  }
+}
+```
+
+If `candidate` is not provided, the API uses the default candidate profile in `src/server.ts`.
+
+Example request:
+
+```bash
+curl -X POST http://localhost:5000/analyze-job \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Junior Software Engineer",
+    "company": "Example Co",
+    "description": "We are looking for a junior developer with TypeScript, Node.js, and SQL experience.",
+    "platform": "LinkedIn"
+  }'
+```
+
+Example request with custom candidate profile:
+
+```bash
+curl -X POST http://localhost:5000/analyze-job \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Junior Backend Developer",
+    "company": "Example Co",
+    "description": "We are looking for a junior developer with Python, Django, PostgreSQL, and API experience.",
+    "platform": "LinkedIn",
+    "candidate": {
+      "background": "Career changer with a software engineering diploma",
+      "skills": ["Python", "Django", "PostgreSQL"],
+      "targetRoles": ["junior backend developer"],
+      "workRights": "Australian citizen",
+      "projects": ["portfolio tracker", "support ticket API"]
+    }
+  }'
+```
+
 ### POST /generate-cover-letter
 Generates job fit analysis and a tailored cover letter.
+
+Uses the same required JSON body as `/analyze-job`.
+
+Example request:
+
+```bash
+curl -X POST http://localhost:5000/generate-cover-letter \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Junior Backend Developer",
+    "company": "Example Co",
+    "description": "This role involves building APIs with Node.js, working with PostgreSQL, and supporting production systems.",
+    "platform": "Seek"
+  }'
+```
+
+## Validation
+
+Request bodies are validated with Zod. Model outputs are also constrained with Zod-backed structured outputs, so the API returns predictable JSON instead of parsing free-form model text.
