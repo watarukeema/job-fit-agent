@@ -60,11 +60,29 @@ npm run dev
 
 The API runs on `http://localhost:5000` by default.
 
+Run the frontend dev server in another terminal:
+
+```bash
+npm run dev:frontend
+```
+
+The frontend runs on `http://localhost:5173` and proxies API requests to the backend.
+
+For a production-style local run, build everything and start the Express server:
+
+```bash
+npm run build
+npm start
+```
+
+Then open `http://localhost:5000`. Express serves the built React app and the API from the same server.
+
 ## Scripts
 
 - `npm run dev` starts the TypeScript server with `tsx`.
+- `npm run dev:frontend` starts the React/Vite frontend.
 - `npm run typecheck` checks TypeScript without emitting files.
-- `npm run build` compiles the app to `dist`.
+- `npm run build` compiles the backend and builds the frontend.
 - `npm start` runs the compiled server from `dist/server.js`.
 - `npm test` compiles and runs the API test suite with mocked OpenAI responses.
 

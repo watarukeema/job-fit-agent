@@ -4,7 +4,8 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
-import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 dotenv.config({ quiet: true });
 
@@ -119,6 +120,12 @@ You are a job application screening assistant for a junior software engineer in 
 
 ${buildCandidateBackground(candidate)}
 
+Scoring rules:
+- APPLY must have fitScore from 70 to 100.
+- MAYBE must have fitScore from 40 to 69.
+- SKIP must have fitScore from 0 to 39.
+- Do not return a verdict that conflicts with the fitScore.
+
 Job:
 Title: ${title}
 Company: ${company}
@@ -204,6 +211,26 @@ export function createApp(openaiClient?: OpenAIParseClient): Express {
       console.error(error);
       res.status(500).json({ error: "Failed to generate a cover letter" });
     }
+  });
+
+  const frontendDistPath = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../frontend/dist",
+  );
+
+  app.use(express.static(frontendDistPath));
+
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || !req.accepts("html")) {
+      next();
+      return;
+    }
+
+    res.sendFile(resolve(frontendDistPath, "index.html"), (error) => {
+      if (error) {
+        next(error);
+      }
+    });
   });
 
   return app;

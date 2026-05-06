@@ -123,6 +123,7 @@ test("POST /analyze-job returns parsed OpenAI analysis", async () => {
     assert.equal(calls.length, 1);
     assert.match(calls[0]!.input, /Recent Computer Science graduate/);
     assert.match(calls[0]!.input, /Apply via LinkedIn with tailored resume/);
+    assert.match(calls[0]!.input, /APPLY must have fitScore from 70 to 100/);
   });
 });
 
@@ -142,6 +143,7 @@ test("POST /generate-cover-letter returns parsed OpenAI cover letter", async () 
     assert.deepEqual(await response.json(), coverLetterResponse);
     assert.equal(calls.length, 1);
     assert.match(calls[0]!.input, /Apply via Seek with resume and cover letter/);
+    assert.match(calls[0]!.input, /Do not return a verdict that conflicts with the fitScore/);
   });
 });
 
