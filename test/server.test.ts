@@ -135,6 +135,36 @@ test("GET /health returns ok", async () => {
   });
 });
 
+test("GET /openapi.json returns API schema", async () => {
+  const { client } = createMockOpenAI(analysisResponse);
+  const app = createApp(client);
+
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/openapi.json`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.openapi, "3.0.3");
+    assert.equal(body.info.title, "Job Fit Agent API");
+    assert.ok(body.paths["/analyze-job"]);
+    assert.ok(body.paths["/generate-cover-letter"]);
+    assert.ok(body.paths["/extract-resume"]);
+  });
+});
+
+test("GET /docs serves Swagger UI", async () => {
+  const { client } = createMockOpenAI(analysisResponse);
+  const app = createApp(client);
+
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/docs/`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(body, /swagger-ui/);
+  });
+});
+
 test("POST /analyze-job rejects invalid request body", async () => {
   const { calls, client } = createMockOpenAI(analysisResponse);
   const app = createApp(client);

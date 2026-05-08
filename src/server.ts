@@ -6,9 +6,11 @@ import multer from "multer";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { PDFParse } from "pdf-parse";
+import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { openApiSpec } from "./openapi.js";
 
 dotenv.config({ quiet: true });
 
@@ -227,6 +229,18 @@ export function createApp(openaiClient?: OpenAIParseClient): Express {
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
+
+  app.get("/openapi.json", (_req, res) => {
+    res.json(openApiSpec);
+  });
+
+  app.use(
+    "/docs",
+    swaggerUi.serve,
+    swaggerUi.setup(openApiSpec, {
+      customSiteTitle: "Job Fit Agent API Docs",
+    }),
+  );
 
   app.post("/extract-resume", resumeUpload.single("resume"), async (req, res) => {
     try {

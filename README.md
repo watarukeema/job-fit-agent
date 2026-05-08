@@ -61,6 +61,8 @@ npm run dev
 
 The API runs on `http://localhost:5000` by default.
 
+API documentation is available at `http://localhost:5000/docs`.
+
 Run the frontend dev server in another terminal:
 
 ```bash
@@ -88,6 +90,18 @@ Then open `http://localhost:5000`. Express serves the built React app and the AP
 - `npm test` compiles and runs the API test suite with mocked OpenAI responses.
 
 ## API Endpoints
+
+Interactive Swagger documentation is available at:
+
+```bash
+http://localhost:5000/docs
+```
+
+The raw OpenAPI schema is available at:
+
+```bash
+http://localhost:5000/openapi.json
+```
 
 ### GET /health
 Returns API health status.
