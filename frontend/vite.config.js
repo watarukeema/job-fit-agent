@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/health": "http://localhost:5000",
+      "/extract-resume": "http://localhost:5000",
       "/analyze-job": "http://localhost:5000",
       "/generate-cover-letter": "http://localhost:5000",
     },

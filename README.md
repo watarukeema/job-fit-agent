@@ -5,7 +5,8 @@ AI-powered job application assistant that analyzes job descriptions and generate
 ## Features
 - Analyze job descriptions
 - Return Apply / Maybe / Skip verdict
-- Match candidate skills against job requirements
+- Match resume/CV evidence against job requirements
+- Extract resume/CV text from uploaded PDF, DOCX, or plain text files
 - Identify risk flags
 - Generate tailored cover letters
 - Suggest next application action
@@ -95,6 +96,31 @@ Returns API health status.
 curl http://localhost:5000/health
 ```
 
+### POST /extract-resume
+Extracts resume/CV text from an uploaded file so the frontend can place it in the editable resume textarea.
+
+Supported file types:
+
+- PDF
+- DOCX
+- TXT / MD / RTF
+
+Example request:
+
+```bash
+curl -X POST http://localhost:5000/extract-resume \
+  -F "resume=@/path/to/resume.pdf"
+```
+
+Example response:
+
+```json
+{
+  "fileName": "resume.pdf",
+  "text": "Extracted resume text..."
+}
+```
+
 ### POST /analyze-job
 Analyzes job fit.
 
@@ -105,25 +131,12 @@ Required JSON body:
   "title": "Junior Software Engineer",
   "company": "Example Co",
   "description": "We are looking for a junior developer with TypeScript, Node.js, and SQL experience.",
-  "platform": "LinkedIn"
+  "platform": "LinkedIn",
+  "resume": "Recent Computer Science graduate. Skills: TypeScript, Express, PostgreSQL..."
 }
 ```
 
-Optional candidate profile:
-
-```json
-{
-  "candidate": {
-    "background": "Recent computer science graduate",
-    "skills": ["TypeScript", "Express", "PostgreSQL", "React"],
-    "targetRoles": ["junior software engineer", "backend developer"],
-    "workRights": "Has Australian working rights",
-    "projects": ["parking app", "HTTP proxy", "music genre classifier"]
-  }
-}
-```
-
-If `candidate` is not provided, the API uses the default candidate profile in `src/server.ts`.
+The `resume` field is required. Send extracted plain text from the user's resume/CV; both job analysis and cover letter generation use it as the candidate source of truth. The frontend can populate this field by calling `/extract-resume` after the user uploads a CV file.
 
 Example request:
 
@@ -134,27 +147,8 @@ curl -X POST http://localhost:5000/analyze-job \
     "title": "Junior Software Engineer",
     "company": "Example Co",
     "description": "We are looking for a junior developer with TypeScript, Node.js, and SQL experience.",
-    "platform": "LinkedIn"
-  }'
-```
-
-Example request with custom candidate profile:
-
-```bash
-curl -X POST http://localhost:5000/analyze-job \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Junior Backend Developer",
-    "company": "Example Co",
-    "description": "We are looking for a junior developer with Python, Django, PostgreSQL, and API experience.",
     "platform": "LinkedIn",
-    "candidate": {
-      "background": "Career changer with a software engineering diploma",
-      "skills": ["Python", "Django", "PostgreSQL"],
-      "targetRoles": ["junior backend developer"],
-      "workRights": "Australian citizen",
-      "projects": ["portfolio tracker", "support ticket API"]
-    }
+    "resume": "Recent Computer Science graduate. Skills: TypeScript, Express, PostgreSQL. Projects: parking app, HTTP proxy, music genre classifier."
   }'
 ```
 
@@ -162,6 +156,8 @@ curl -X POST http://localhost:5000/analyze-job \
 Generates job fit analysis and a tailored cover letter.
 
 Uses the same required JSON body as `/analyze-job`.
+
+If the frontend already has an analysis result for the same job and resume, it can include that result as `analysis`. The API will reuse the same verdict, fit score, matched skills, risk flags, and reasoning instead of re-scoring during cover letter generation.
 
 Example request:
 
@@ -172,10 +168,15 @@ curl -X POST http://localhost:5000/generate-cover-letter \
     "title": "Junior Backend Developer",
     "company": "Example Co",
     "description": "This role involves building APIs with Node.js, working with PostgreSQL, and supporting production systems.",
-    "platform": "Seek"
+    "platform": "Seek",
+    "resume": "Recent Computer Science graduate. Skills: TypeScript, Express, PostgreSQL. Projects: parking app, HTTP proxy, music genre classifier."
   }'
 ```
 
 ## Validation
 
 Request bodies are validated with Zod. Model outputs are also constrained with Zod-backed structured outputs, so the API returns predictable JSON instead of parsing free-form model text.
+
+## Browser Storage
+
+The frontend stores the extracted or pasted resume/CV text and recent generated results in `localStorage`. This keeps the app lightweight because saved jobs and resume edits persist in the same browser without requiring a database.

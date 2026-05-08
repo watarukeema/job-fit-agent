@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -7,11 +7,12 @@ import {
   Clipboard,
   Copy,
   FileText,
+  History,
   Loader2,
   RotateCcw,
-  Send,
   Sparkles,
-  UserRound,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import "./styles.css";
 
@@ -22,72 +23,84 @@ const initialJob = {
   description: "",
 };
 
-const initialCandidate = {
-  background: "Recent Computer Science graduate",
-  skills: "TypeScript, Express, PostgreSQL, Supabase, React basics, Flutter",
-  targetRoles:
-    "junior software engineer, backend developer, full-stack developer, QA, technical support",
-  workRights: "Has Australian working rights but may require sponsorship in the future",
-  projects:
-    "full-stack networking platform, parking app, HTTP proxy, music genre classifier",
-};
+const resumeStorageKey = "job-fit-agent:resume";
+const historyStorageKey = "job-fit-agent:history";
+const maxHistoryItems = 8;
 
-function toList(value) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function readJsonStorage(key, fallback) {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-function buildPayload(job, candidate, useDefaultProfile) {
-  const payload = {
+function createId() {
+  return window.crypto?.randomUUID?.() ?? String(Date.now());
+}
+
+function loadResume() {
+  return readJsonStorage(resumeStorageKey, "");
+}
+
+function loadHistory() {
+  const history = readJsonStorage(historyStorageKey, []);
+  return Array.isArray(history) ? history : [];
+}
+
+function buildPayload(job, resume) {
+  return {
     title: job.title.trim(),
     company: job.company.trim(),
     platform: job.platform.trim(),
     description: job.description.trim(),
+    resume: resume.trim(),
   };
+}
 
-  if (!useDefaultProfile) {
-    payload.candidate = {
-      background: candidate.background.trim(),
-      skills: toList(candidate.skills),
-      targetRoles: toList(candidate.targetRoles),
-      workRights: candidate.workRights.trim(),
-      projects: toList(candidate.projects),
-    };
-  }
-
-  return payload;
+function createRequestSignature(job, resume) {
+  return JSON.stringify(buildPayload(job, resume));
 }
 
 function App() {
   const [job, setJob] = useState(initialJob);
-  const [candidate, setCandidate] = useState(initialCandidate);
-  const [useDefaultProfile, setUseDefaultProfile] = useState(true);
+  const [resume, setResume] = useState(loadResume);
+  const [history, setHistory] = useState(loadHistory);
   const [activeTab, setActiveTab] = useState("analysis");
   const [analysis, setAnalysis] = useState(null);
+  const [analysisSignature, setAnalysisSignature] = useState("");
   const [coverLetter, setCoverLetter] = useState(null);
   const [error, setError] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
+  const [isExtractingResume, setIsExtractingResume] = useState(false);
+  const [resumeFileName, setResumeFileName] = useState("");
   const [copied, setCopied] = useState(false);
 
   const isBusy = Boolean(loadingAction);
+
+  useEffect(() => {
+    window.localStorage.setItem(resumeStorageKey, JSON.stringify(resume));
+  }, [resume]);
+
+  useEffect(() => {
+    window.localStorage.setItem(historyStorageKey, JSON.stringify(history));
+  }, [history]);
+
   const canSubmit = useMemo(
     () =>
       job.title.trim() &&
       job.company.trim() &&
       job.platform.trim() &&
       job.description.trim() &&
+      resume.trim() &&
+      !isExtractingResume &&
       !isBusy,
-    [job, isBusy],
+    [job, resume, isExtractingResume, isBusy],
   );
 
   function updateJob(field, value) {
     setJob((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateCandidate(field, value) {
-    setCandidate((current) => ({ ...current, [field]: value }));
   }
 
   async function submit(endpoint, action) {
@@ -96,10 +109,17 @@ function App() {
     setLoadingAction(action);
 
     try {
+      const payload = buildPayload(job, resume);
+      const currentSignature = createRequestSignature(job, resume);
+
+      if (action === "cover" && analysis && analysisSignature === currentSignature) {
+        payload.analysis = analysis;
+      }
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPayload(job, candidate, useDefaultProfile)),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -110,12 +130,16 @@ function App() {
 
       if (action === "analysis") {
         setAnalysis(data);
+        setAnalysisSignature(currentSignature);
         setActiveTab("analysis");
       } else {
         setCoverLetter(data);
         setAnalysis(data);
+        setAnalysisSignature(currentSignature);
         setActiveTab("cover");
       }
+
+      saveHistoryItem(data, action);
     } catch (requestError) {
       setError(requestError.message || "Something went wrong");
     } finally {
@@ -125,13 +149,84 @@ function App() {
 
   function resetForm() {
     setJob(initialJob);
-    setCandidate(initialCandidate);
-    setUseDefaultProfile(true);
     setAnalysis(null);
+    setAnalysisSignature("");
     setCoverLetter(null);
     setError("");
     setCopied(false);
     setActiveTab("analysis");
+  }
+
+  function resetResume() {
+    setResume("");
+    setResumeFileName("");
+    setAnalysisSignature("");
+  }
+
+  async function extractResumeFromFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setError("");
+    setIsExtractingResume(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("resume", file);
+
+      const response = await fetch("/extract-resume", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || "Could not read resume file");
+      }
+
+      setResume(data.text);
+      setResumeFileName(data.fileName || file.name);
+      setAnalysisSignature("");
+    } catch (uploadError) {
+      setError(uploadError.message || "Could not read resume file");
+    } finally {
+      setIsExtractingResume(false);
+    }
+  }
+
+  function saveHistoryItem(result, action) {
+    const item = {
+      id: createId(),
+      createdAt: new Date().toISOString(),
+      action,
+      job,
+      resume,
+      analysis: result,
+      coverLetter: action === "cover" ? result : null,
+      verdict: result.verdict,
+      fitScore: result.fitScore,
+    };
+
+    setHistory((current) => [item, ...current].slice(0, maxHistoryItems));
+  }
+
+  function loadHistoryItem(item) {
+    setJob(item.job);
+    setResume(item.resume ?? "");
+    setAnalysis(item.analysis);
+    setAnalysisSignature(createRequestSignature(item.job, item.resume ?? ""));
+    setCoverLetter(item.coverLetter);
+    setError("");
+    setCopied(false);
+    setActiveTab(item.coverLetter ? "cover" : "analysis");
+  }
+
+  function clearHistory() {
+    setHistory([]);
   }
 
   async function copyCoverLetter() {
@@ -207,64 +302,51 @@ function App() {
             />
           </label>
 
-          <section className="profile-box">
-            <div className="profile-topline">
+          <section className="resume-box">
+            <div className="resume-topline">
               <div>
                 <h3>
-                  <UserRound size={18} />
-                  Candidate Profile
+                  <FileText size={18} />
+                  Resume / CV
                 </h3>
-                <p>{useDefaultProfile ? "Using default profile" : "Using custom profile"}</p>
+                <p>
+                  {resumeFileName
+                    ? `Extracted from ${resumeFileName}`
+                    : "Upload a CV file or paste text directly"}
+                </p>
               </div>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={!useDefaultProfile}
-                  onChange={(event) => setUseDefaultProfile(!event.target.checked)}
-                />
-                <span>Edit</span>
-              </label>
+              <div className="resume-actions">
+                <label className={`file-button ${isExtractingResume ? "disabled" : ""}`}>
+                  {isExtractingResume ? (
+                    <Loader2 className="spin" size={17} />
+                  ) : (
+                    <Upload size={17} />
+                  )}
+                  {isExtractingResume ? "Reading file" : "Upload CV"}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.markdown,.rtf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                    disabled={isExtractingResume}
+                    onChange={extractResumeFromFile}
+                  />
+                </label>
+                {resume.trim() && (
+                  <button className="text-button" type="button" onClick={resetResume}>
+                    Clear resume
+                  </button>
+                )}
+              </div>
             </div>
 
-            {!useDefaultProfile && (
-              <div className="profile-fields">
-                <label>
-                  <span>Background</span>
-                  <input
-                    value={candidate.background}
-                    onChange={(event) => updateCandidate("background", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Skills</span>
-                  <input
-                    value={candidate.skills}
-                    onChange={(event) => updateCandidate("skills", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Target roles</span>
-                  <input
-                    value={candidate.targetRoles}
-                    onChange={(event) => updateCandidate("targetRoles", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Work rights</span>
-                  <input
-                    value={candidate.workRights}
-                    onChange={(event) => updateCandidate("workRights", event.target.value)}
-                  />
-                </label>
-                <label>
-                  <span>Projects</span>
-                  <input
-                    value={candidate.projects}
-                    onChange={(event) => updateCandidate("projects", event.target.value)}
-                  />
-                </label>
-              </div>
-            )}
+            <label className="resume-field">
+              <span>Resume / CV text</span>
+              <textarea
+                value={resume}
+                onChange={(event) => setResume(event.target.value)}
+                placeholder="Paste the resume or CV text here..."
+                rows={9}
+              />
+            </label>
           </section>
 
           {error && (
@@ -294,6 +376,12 @@ function App() {
               Cover Letter
             </button>
           </div>
+
+          <HistoryPanel
+            history={history}
+            onLoad={loadHistoryItem}
+            onClear={clearHistory}
+          />
         </form>
 
         <section className="panel result-panel">
@@ -334,6 +422,51 @@ function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function HistoryPanel({ history, onLoad, onClear }) {
+  return (
+    <section className="history-box">
+      <div className="history-header">
+        <div>
+          <h3>
+            <History size={18} />
+            Saved Jobs
+          </h3>
+          <p>{history.length ? "Stored in this browser" : "No saved results yet"}</p>
+        </div>
+        {history.length > 0 && (
+          <button className="icon-button" type="button" onClick={onClear} title="Clear saved jobs">
+            <Trash2 size={17} />
+          </button>
+        )}
+      </div>
+
+      {history.length > 0 && (
+        <div className="history-list">
+          {history.map((item) => (
+            <button
+              className="history-item"
+              key={item.id}
+              type="button"
+              onClick={() => onLoad(item)}
+            >
+              <span className={`verdict mini verdict-${item.verdict.toLowerCase()}`}>
+                {item.verdict}
+              </span>
+              <span className="history-main">
+                <strong>{item.job.title || "Untitled role"}</strong>
+                <small>
+                  {item.job.company || "Unknown company"} · {item.fitScore}/100 ·{" "}
+                  {item.action === "cover" ? "Cover letter" : "Analysis"}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
